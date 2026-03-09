@@ -34,6 +34,11 @@ from tests.mocks.media_server_mocks import (
     setup_mock_servers,
 )
 
+USERNAME_VISIBLE_SELECTOR = (
+    "input[name='username'][style*='opacity: 1'], "
+    "input[name='username']:not([style*='opacity: 0'])"
+)
+
 
 class E2ETestConfig(BaseConfig):
     TESTING = True
@@ -143,20 +148,20 @@ def submit_invitation_form(page: Page) -> None:
     expect(submit_button).to_be_visible()
     expect(submit_button).to_be_enabled()
     submit_button.scroll_into_view_if_needed()
+    # requestSubmit preserves native validation while avoiding flaky animated clicks.
     form.evaluate("(form) => form.requestSubmit()")
 
 
 def open_invitation_form(page: Page) -> None:
     accept_button = page.locator("#accept-invite-btn")
     expect(accept_button).to_be_visible()
+    # The welcome card animation can briefly obscure the button in headless runs.
     accept_button.click(force=True)
     try:
-        page.wait_for_selector(
-            "input[name='username'][style*='opacity: 1'], input[name='username']:not([style*='opacity: 0'])",
-            timeout=3000,
-        )
+        page.wait_for_selector(USERNAME_VISIBLE_SELECTOR, timeout=3000)
         return
     except PlaywrightTimeoutError:
+        # Fallback for environments where the animation script never completes.
         page.evaluate(
             """() => {
                 const welcomeScreen = document.getElementById('welcome-screen');
@@ -274,9 +279,7 @@ class TestInvitationUserJourney:
         expect(page.locator("body")).to_contain_text("been invited")
 
         # Test password mismatch - wait for form to be ready
-        page.wait_for_selector(
-            "input[name='username']:not([style*='opacity: 0'])", timeout=5000
-        )
+        page.wait_for_selector(USERNAME_VISIBLE_SELECTOR, timeout=5000)
         page.fill("input[name='username']", "testuser")
         page.fill("input[name='password']", "password123")
         page.fill("input[name='confirm_password']", "differentpassword")
